@@ -1,0 +1,127 @@
+{
+  "name": "Podcast Pipeline — Webhook Ingestion",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "podcast",
+        "authentication": "headerAuth",
+        "responseMode": "lastNode",
+        "options": {
+          "responseStatusCode": 202
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "a1b2c3d4-0001-0001-0001-000000000001",
+      "name": "Webhook — POST /podcast",
+      "webhookId": "podcast-pipeline-webhook",
+      "credentials": {
+        "headerAuth": {
+          "id": "REPLACE_AT_IMPORT_HEADER_AUTH",
+          "name": "Podcast Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// Node 2: Kill-switch gate + generate job_id + normalize payload\n// =============================================================\n// Reads the DiscordTrigger payload (ARCHITECTURE.md §3.1):\n//   interaction_id, user_id, channel_id, guild_id, locale,\n//   subject, subject_hash, mode, style, timestamp\n// =============================================================\n// NOTE: Dynamic 4xx response codes on rejection are a Phase 5\n// hardening item. This node uses Webhook responseMode=lastNode;\n// the Redis node's output becomes the HTTP response body.\n// A static 202 is returned for accepted requests.\n// =============================================================\n\nconst body = $input.first().json.body || $input.first().json;\n\n// --------------------------------------------------\n// 1. Kill-switch gate (Phase 1 hard gate)\n//    KILL_SWITCH=1 (string) halts the workflow entirely.\n//    n8n stops on uncaught exception and returns 500.\n//    Bot interprets non-2xx via httpx error path → French\n//    generic error shown to user.\n// --------------------------------------------------\nif ($env.KILL_SWITCH === '1') {\n  throw new Error('KILL_SWITCH active — service temporarily unavailable');\n}\n\n// --------------------------------------------------\n// 2. Rate-limit pre-check\n// TODO Phase 5: enforce per-user daily rate limit here.\n// Query: SELECT count FROM podcast.rate_limits\n//        WHERE user_id=$1 AND day=current_date\n// If count >= $env.RATE_LIMIT_PER_USER_DAY, throw an Error\n// to halt the workflow (same pattern as kill-switch above).\n// --------------------------------------------------\n\n// --------------------------------------------------\n// 3. Extract and normalize payload fields\n// --------------------------------------------------\nconst {\n  interaction_id,\n  user_id,\n  channel_id,\n  guild_id      = null,\n  locale        = 'fr',\n  subject,\n  subject_hash,\n  mode,\n  style         = null,\n  timestamp\n} = body;\n\n// --------------------------------------------------\n// 4. Generate job UUID server-side (Node.js stdlib)\n// --------------------------------------------------\nconst job_id = crypto.randomUUID();\n\n// --------------------------------------------------\n// 5. Emit normalized envelope for downstream nodes\n// --------------------------------------------------\nreturn [{\n  json: {\n    job_id,\n    interaction_id,\n    user_id,\n    channel_id,\n    guild_id,\n    locale,\n    subject,\n    subject_hash,\n    mode,\n    style,\n    payload: JSON.stringify(body)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [240, 0],
+      "id": "a1b2c3d4-0002-0002-0002-000000000002",
+      "name": "Validate + Generate job_id"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ins AS (\n  INSERT INTO podcast.jobs\n    (id, interaction_id, user_id, channel_id, guild_id, locale,\n     subject, subject_hash, mode, style, payload, status)\n  VALUES\n    ($1, $2, $3, $4, $5, $6,\n     $7, $8, $9, $10, $11::jsonb, 'queued')\n  RETURNING id\n)\nINSERT INTO podcast.audit_log (job_id, event, payload)\nSELECT id, 'queued',\n       jsonb_build_object('interaction_id', $2, 'user_id', $3, 'mode', $9)\nFROM ins;",
+        "options": {
+          "queryReplacement": "={{ [$json.job_id, $json.interaction_id, $json.user_id, $json.channel_id, $json.guild_id, $json.locale, $json.subject, $json.subject_hash, $json.mode, $json.style, $json.payload] }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [480, 0],
+      "id": "a1b2c3d4-0003-0003-0003-000000000003",
+      "name": "INSERT jobs + audit_log",
+      "credentials": {
+        "postgres": {
+          "id": "REPLACE_AT_IMPORT_POSTGRES",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "push",
+        "list": "podcast:jobs",
+        "messageData": "={{ JSON.stringify({ job_id: $json.job_id, interaction_id: $json.interaction_id }) }}",
+        "tail": false,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [720, 0],
+      "id": "a1b2c3d4-0004-0004-0004-000000000004",
+      "name": "LPUSH podcast:jobs",
+      "credentials": {
+        "redis": {
+          "id": "REPLACE_AT_IMPORT_REDIS",
+          "name": "Redis account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook — POST /podcast": {
+      "main": [
+        [
+          {
+            "node": "Validate + Generate job_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate + Generate job_id": {
+      "main": [
+        [
+          {
+            "node": "INSERT jobs + audit_log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "INSERT jobs + audit_log": {
+      "main": [
+        [
+          {
+            "node": "LPUSH podcast:jobs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": ""
+  },
+  "versionId": "podcast-pipeline-v1",
+  "meta": {
+    "instanceId": "REPLACE_AT_IMPORT"
+  },
+  "id": "podcast-pipeline-phase1",
+  "tags": []
+}
