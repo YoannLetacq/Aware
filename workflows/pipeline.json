@@ -18,7 +18,7 @@
       "name": "Webhook — POST /podcast",
       "webhookId": "podcast-pipeline-webhook",
       "credentials": {
-        "headerAuth": {
+        "httpHeaderAuth": {
           "id": "REPLACE_AT_IMPORT_HEADER_AUTH",
           "name": "Podcast Webhook Auth"
         }
