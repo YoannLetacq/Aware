@@ -1,0 +1,238 @@
+services:
+  # ==========================================
+  # POSTGRESQL - State store (podcast.* schema)
+  # Pattern: refs/veille_auto/docker-compose.yml:5-30
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: podcast-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - podcast-network
+
+  # ==========================================
+  # REDIS - Job queue + rate-limit counters
+  # Pattern: refs/veille_auto/docker-compose.yml:119-140
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: podcast-redis
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes --requirepass "${REDIS_PASSWORD}"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "$$REDIS_PASSWORD", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - podcast-network
+
+  # ==========================================
+  # N8N - Trigger ingestion + Discord post-back
+  # Pattern: refs/veille_auto/docker-compose.yml:35-93
+  # IMPORTANT: no long-running browser nodes here (critique H1)
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:2.22.3
+    container_name: podcast-n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - N8N_API_KEY=${N8N_API_KEY}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_EDITOR_BASE_URL=http://localhost:5678/
+      - N8N_RUNNERS_MODE=internal
+      - N8N_PAYLOAD_SIZE_MAX=16
+      - N8N_METRICS=true
+      - TZ=${TZ:-Europe/Paris}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
+      # Code nodes need $env access; exposure bounded by N8N_ENV_VARS whitelist below
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # Whitelist of env vars visible to n8n Code nodes
+      - N8N_ENV_VARS=POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,WEBHOOK_URL,N8N_API_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID,DISCORD_ALLOWED_AUTHORS,GEMINI_API_KEY,GEMINI_MODEL,WORKER_SHARED_TOKEN,RATE_LIMIT_PER_USER_DAY,RATE_LIMIT_GLOBAL_DAY,KILL_SWITCH,OPERATOR_DISCORD_WEBHOOK
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - DISCORD_ALLOWED_AUTHORS=${DISCORD_ALLOWED_AUTHORS:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - WORKER_SHARED_TOKEN=${WORKER_SHARED_TOKEN}
+      - RATE_LIMIT_PER_USER_DAY=${RATE_LIMIT_PER_USER_DAY:-3}
+      - RATE_LIMIT_GLOBAL_DAY=${RATE_LIMIT_GLOBAL_DAY:-20}
+      - KILL_SWITCH=${KILL_SWITCH:-0}
+      - OPERATOR_DISCORD_WEBHOOK=${OPERATOR_DISCORD_WEBHOOK}
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5678/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - podcast-network
+
+  # ==========================================
+  # WORKER - Playwright browser worker
+  # Owns Chromium, NotebookLM session, Gemini calls, artifact download
+  # ==========================================
+  worker:
+    build: ./worker
+    container_name: podcast-worker
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - GOOGLE_BURNER_EMAIL=${GOOGLE_BURNER_EMAIL}
+      - GOOGLE_BURNER_PASSWORD=${GOOGLE_BURNER_PASSWORD}
+      - GOOGLE_BURNER_TOTP_SEED=${GOOGLE_BURNER_TOTP_SEED}
+      - NOTEBOOKLM_STORAGE_STATE_PATH=/app/session/storageState.json
+      - WORKER_SHARED_TOKEN=${WORKER_SHARED_TOKEN}
+      - OPERATOR_DISCORD_WEBHOOK=${OPERATOR_DISCORD_WEBHOOK}
+      - RATE_LIMIT_PER_USER_DAY=${RATE_LIMIT_PER_USER_DAY:-3}
+      - RATE_LIMIT_GLOBAL_DAY=${RATE_LIMIT_GLOBAL_DAY:-20}
+      - KILL_SWITCH=${KILL_SWITCH:-0}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      # storageState.json — chmod 600, owned by worker UID (critique H4)
+      - ./data/session:/app/session:rw
+      - ./data/artifacts:/app/artifacts:rw
+      - ./data/debug:/app/debug:rw
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - podcast-network
+
+  # ==========================================
+  # BOT - Discord slash-command listener
+  # Defers within 3 s (critique H3), validates input, POSTs to n8n
+  # ==========================================
+  bot:
+    build: ./bot
+    container_name: podcast-bot
+    restart: unless-stopped
+    environment:
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_APP_ID=${DISCORD_APP_ID}
+      - DISCORD_PUBLIC_KEY=${DISCORD_PUBLIC_KEY}
+      - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
+      - DISCORD_ALLOWED_AUTHORS=${DISCORD_ALLOWED_AUTHORS:-}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://n8n:5678/}
+      - WORKER_SHARED_TOKEN=${WORKER_SHARED_TOKEN}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/podcast}
+      - TZ=${TZ:-Europe/Paris}
+      - KILL_SWITCH=${KILL_SWITCH:-0}
+      - RATE_LIMIT_PER_USER_DAY=${RATE_LIMIT_PER_USER_DAY:-3}
+      - RATE_LIMIT_GLOBAL_DAY=${RATE_LIMIT_GLOBAL_DAY:-20}
+    volumes:
+      - ./config:/app/config:ro
+    depends_on:
+      n8n:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - podcast-network
+
+  # ==========================================
+  # PROMETHEUS / GRAFANA - Monitoring (OPTIONAL)
+  # Uncomment to enable monitoring (mirror veille_auto compose:162-199)
+  # ==========================================
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: podcast-prometheus
+  #   restart: unless-stopped
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   volumes:
+  #     - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - ./data/prometheus:/prometheus
+  #   networks:
+  #     - podcast-network
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: podcast-grafana
+  #   restart: unless-stopped
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+  #   volumes:
+  #     - ./data/grafana:/var/lib/grafana
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - podcast-network
+
+networks:
+  podcast-network:
+    driver: bridge
