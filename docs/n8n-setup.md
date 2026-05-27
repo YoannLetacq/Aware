@@ -316,6 +316,7 @@ Phase 2+ (voir `IMPLEMENTATION_PLAN.md §2`).
 | Workflow reste `Inactive`, pas d'URL Production | Nœud Webhook sans URL visible | Sauvegarder le workflow une première fois, puis activer |
 | Vérification endpoint Discord échoue (PING rejeté) | `DISCORD_PUBLIC_KEY` absent ou incorrect dans le conteneur `bot` | Vérifier `.env`, puis `docker compose logs bot` pour le message d'erreur Ed25519 |
 | `LPUSH` depuis un Code node échoue | Credential Redis non lié au nœud | Lier le credential **Redis** dans le nœud, ou utiliser un nœud natif **Redis** (operation: List Push) — pattern identique à `veille_auto/workflow-simplified.json` nœud "Acquire Lock" |
+| `podcast-postgres` redémarre en boucle avec `initdb: directory exists but is not empty` | Un fichier dot-préfixé (`.gitkeep`, `.DS_Store`, artefact WSL) est présent à la racine du bind-mount `/var/lib/postgresql/data` | La stack utilise `PGDATA=/var/lib/postgresql/data/pgdata` (sous-répertoire) pour isoler initdb du contenu du répertoire parent. Les données Postgres réelles se trouvent dans `data/postgres/pgdata/`, pas à la racine de `data/postgres/`. Le fichier `data/postgres/.gitkeep` est intentionnel et ne doit pas être supprimé — il est ignoré par initdb grâce au PGDATA subdir. En cas de répertoire corrompu (UID 70 mode 0700), nettoyer avec `docker run --rm -v $(pwd)/data/postgres:/pgdata alpine sh -c 'rm -rf /pgdata/* /pgdata/.[!.]*'` puis relancer `./scripts/start.sh`. |
 
 ---
 
