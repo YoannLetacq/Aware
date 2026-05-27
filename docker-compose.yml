@@ -79,11 +79,18 @@ services:
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
       - DB_POSTGRESDB_USER=${POSTGRES_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
-      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:5678/}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://localhost:${N8N_PORT:-5679}/}
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - N8N_EDITOR_BASE_URL=http://localhost:5678/
+      - N8N_EDITOR_BASE_URL=http://localhost:${N8N_PORT:-5679}/
+      # Plain-HTTP localhost: disable Secure cookie flag (else browser drops session every request).
+      - N8N_SECURE_COOKIE=false
+      # 7-day session JWT (default; explicit for clarity).
+      - N8N_USER_MANAGEMENT_JWT_DURATION_HOURS=168
+      # Whitelist Node.js builtin modules for Code nodes (Validate + Generate job_id
+      # uses require('crypto').randomUUID()). n8n 2.x disallows all builtins by default.
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
       - N8N_RUNNERS_MODE=internal
       - N8N_PAYLOAD_SIZE_MAX=16
       - N8N_METRICS=true
@@ -92,7 +99,7 @@ services:
       # Code nodes need $env access; exposure bounded by N8N_ENV_VARS whitelist below
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # Whitelist of env vars visible to n8n Code nodes
-      - N8N_ENV_VARS=POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,WEBHOOK_URL,N8N_API_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID,DISCORD_ALLOWED_AUTHORS,GEMINI_API_KEY,GEMINI_MODEL,WORKER_SHARED_TOKEN,RATE_LIMIT_PER_USER_DAY,RATE_LIMIT_GLOBAL_DAY,KILL_SWITCH,OPERATOR_DISCORD_WEBHOOK
+      - N8N_ENV_VARS=POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,REDIS_PASSWORD,WEBHOOK_URL,N8N_API_KEY,DISCORD_BOT_TOKEN,DISCORD_GUILD_ID,DISCORD_ALLOWED_AUTHORS,GEMINI_API_KEY,GEMINI_MODEL,WORKER_SHARED_TOKEN,RATE_LIMIT_PER_USER_DAY,RATE_LIMIT_GLOBAL_DAY,KILL_SWITCH,OPERATOR_DISCORD_WEBHOOK
       - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
       - DISCORD_GUILD_ID=${DISCORD_GUILD_ID}
       - DISCORD_ALLOWED_AUTHORS=${DISCORD_ALLOWED_AUTHORS:-}
@@ -103,6 +110,13 @@ services:
       - RATE_LIMIT_GLOBAL_DAY=${RATE_LIMIT_GLOBAL_DAY:-20}
       - KILL_SWITCH=${KILL_SWITCH:-0}
       - OPERATOR_DISCORD_WEBHOOK=${OPERATOR_DISCORD_WEBHOOK}
+      # Expose workflow-side env vars so credentials using {{ $env.X }} resolve.
+      # The DB_POSTGRESDB_* vars above are for n8n's own metastore — separate from
+      # user-workflow access.
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
     ports:
       - "127.0.0.1:${N8N_PORT:-5678}:5678"
     volumes:
