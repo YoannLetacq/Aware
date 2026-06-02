@@ -17,7 +17,7 @@ Revue de ce runbook contre l'état réel du dépôt (`docker-compose.yml`,
 | 3. Accès `$env` (Code nodes) | ✅ Validé, ⚠️ complété | Ajout : le Code node utilise `require('crypto')` → nécessite `NODE_FUNCTION_ALLOW_BUILTIN=crypto` (déjà dans compose). |
 | 4. Créer les credentials | ⚠️ **Corrigé** | **Manquait le credential `Podcast Webhook Auth` (Header Auth)** que le nœud Webhook exige. Les credentials **Discord** et **Gemini** ne sont **pas** utilisés par le workflow Phase 1 (le worker Python les détient). |
 | 5. Importer le workflow | ⚠️ **Corrigé** | `pipeline.json` ne contient QUE 4 nœuds (Webhook → Code → Postgres → Redis). Aucun nœud HTTP Discord/Gemini à lier. |
-| 6. Slash-command Discord | ❌ **Bloquant** | `workflows/discord-command.json` **n'existe pas** dans le dépôt. Commande corrigée ci-dessous (here-doc). |
+| 6. Slash-command Discord | ✅ Validé, ⚠️ clarifié | Le **bot auto-synchronise** `/podcast` au démarrage (`bot/app/main.py` `on_ready`). `workflows/discord-command.json` créé (fidèle au bot) pour la registration manuelle de secours. |
 | 7. Webhook entrant (bot-first) | ✅ Validé | Le bot vérifie l'Ed25519 et relaie en `Authorization: Bearer <WORKER_SHARED_TOKEN>` (`bot/app/webhook_client.py:41`). |
 | 8. Test de bout en bout | ✅ Validé | `podcast.jobs.status='queued'` + `LLEN podcast:jobs ≥ 1` conformes au schéma et au workflow. |
 | 9–10. Dépannage / Maintenance | ✅ Validé | Inchangé. |
@@ -258,45 +258,38 @@ Activer le workflow avec le **toggle en haut à droite** (passe de `Inactive`
 
 ## 6. Enregistrer la slash-command Discord
 
-Opération unique. Nécessite `DISCORD_BOT_TOKEN`, `DISCORD_APP_ID` et
-`DISCORD_GUILD_ID` chargés dans le shell :
+**Méthode primaire — le bot enregistre lui-même la commande.** Au démarrage
+(`bot/app/main.py`, `on_ready`), le bot appelle `tree.sync(guild=…)` : si
+`DISCORD_GUILD_ID` est défini, `/podcast` est synchronisée sur la guild
+(propagation immédiate) ; sinon en global (jusqu'à ~1 h). Les choix `mode`
+(Podcast / Vidéo) et `style` (chargés depuis `config/notebooklm_styles.json`)
+sont définis dans `bot/app/commands.py`. **Si le conteneur `bot` tourne, aucune
+action manuelle n'est requise** — vérifier simplement que `/podcast` apparaît
+dans Discord après son boot (`docker compose logs bot` → `bot_ready_guild_sync`).
+
+**Méthode de secours — registration manuelle via l'API REST.** Utile pour
+provisionner la commande sans lancer le bot (ou en CI). Le dépôt fournit
+`workflows/discord-command.json`, fidèle à la commande que le bot enregistre.
+Nécessite `DISCORD_BOT_TOKEN`, `DISCORD_APP_ID`, `DISCORD_GUILD_ID` dans le shell :
 
 ```bash
 source .env
-```
 
-> ⚠️ **`workflows/discord-command.json` n'existe pas encore dans le dépôt.**
-> Le `curl` ci-dessous embarque donc le schéma en here-doc (aucun fichier requis).
-> Si vous préférez un fichier versionné : créez `workflows/discord-command.json`
-> avec le JSON ci-dessous, puis remplacez le bloc `-d @- <<'JSON' … JSON` par
-> `-d @workflows/discord-command.json`.
-
-Enregistrer la commande en scope guild (propagation immédiate, contrairement au
-scope global qui peut prendre jusqu'à une heure) :
-
-```bash
 curl -X POST \
   -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
   -H "Content-Type: application/json" \
   "https://discord.com/api/v10/applications/$DISCORD_APP_ID/guilds/$DISCORD_GUILD_ID/commands" \
-  -d @- <<'JSON'
-{
-  "name": "podcast",
-  "description": "Générer un podcast ou une vidéo NotebookLM",
-  "options": [
-    {"name": "subject", "description": "Sujet (40–400 caractères)", "type": 3, "required": true, "min_length": 40, "max_length": 400},
-    {"name": "mode", "description": "Type de sortie", "type": 3, "required": true,
-     "choices": [{"name": "Podcast audio", "value": "podcast"}, {"name": "Vidéo", "value": "video"}]},
-    {"name": "style", "description": "Style vidéo (requis si mode=video)", "type": 3, "required": false}
-  ]
-}
-JSON
+  -d @workflows/discord-command.json
 ```
 
-Le schéma déclare trois options : `subject` (40–400 car., requis), `mode`
-(`podcast`|`video`, requis), `style` (optionnel) — embarqué dans le `curl`
-ci-dessus. Voir `ARCHITECTURE.md §3.1` pour le schéma complet du payload
-Discord → n8n.
+> `discord-command.json` est un **instantané** : le bot dérive les choix `style`
+> dynamiquement de `config/notebooklm_styles.json` — si vous modifiez les styles,
+> régénérez le JSON (ou laissez le bot resynchroniser). La borne 40–400 caractères
+> du `subject` n'est **pas** une contrainte client Discord (pas de `min_length`
+> dans la commande, à l'identique du bot) : elle est validée côté serveur par
+> `validate_subject`.
+
+Voir `ARCHITECTURE.md §3.1` pour le schéma complet du payload Discord → n8n.
 
 ---
 
