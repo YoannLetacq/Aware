@@ -1,0 +1,39 @@
+{
+  "name": "podcast",
+  "description": "Génère un podcast ou une vidéo NotebookLM à partir d'un sujet.",
+  "options": [
+    {
+      "name": "subject",
+      "description": "Sujet précis en 1–2 phrases (40–400 caractères).",
+      "type": 3,
+      "required": true
+    },
+    {
+      "name": "mode",
+      "description": "Mode de génération : podcast audio ou vidéo.",
+      "type": 3,
+      "required": true,
+      "choices": [
+        {"name": "Podcast", "value": "podcast"},
+        {"name": "Vidéo", "value": "video"}
+      ]
+    },
+    {
+      "name": "style",
+      "description": "Style visuel (obligatoire pour le mode vidéo).",
+      "type": 3,
+      "required": false,
+      "choices": [
+        {"name": "Classic", "value": "Classic"},
+        {"name": "Whiteboard", "value": "Whiteboard"},
+        {"name": "Watercolor", "value": "Watercolor"},
+        {"name": "Retro Print", "value": "Retro Print"},
+        {"name": "Heritage", "value": "Heritage"},
+        {"name": "Paper-craft", "value": "Paper-craft"},
+        {"name": "Kawaii", "value": "Kawaii"},
+        {"name": "Anime", "value": "Anime"},
+        {"name": "Custom", "value": "Custom"}
+      ]
+    }
+  ]
+}
