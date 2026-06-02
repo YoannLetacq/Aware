@@ -1,0 +1,17 @@
+{
+  "version": "2026-05-26-baseline",
+  "formats": ["Explainer", "Brief"],
+  "styles": [
+    "Classic",
+    "Whiteboard",
+    "Watercolor",
+    "Retro Print",
+    "Heritage",
+    "Paper-craft",
+    "Kawaii",
+    "Anime",
+    "Custom"
+  ],
+  "_note_en": "Baseline from notebooklm-feasibility.md research; user MUST confirm against live UI before Phase 1 production use.",
+  "cinematic_excluded": true
+}
