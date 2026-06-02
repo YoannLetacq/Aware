@@ -5,6 +5,31 @@ a démarré la stack. À suivre dans l'ordre des sections.
 
 ---
 
+## 0. État de validation (revue du 2026-06-02 contre le code committé)
+
+Revue de ce runbook contre l'état réel du dépôt (`docker-compose.yml`,
+`workflows/pipeline.json`, `bot/app/`, `db/init.sql`, `env.template`).
+
+| Section | Statut | Détail |
+|---------|--------|--------|
+| 1. Prérequis | ✅ Validé | Variables conformes à `env.template`. `GOOGLE_BURNER_*` non requises pour n8n (côté worker). |
+| 2. Premier accès n8n | ✅ Validé | Port `5678` cohérent avec `env.template` (`N8N_PORT=5678`). Voir note port plus bas. |
+| 3. Accès `$env` (Code nodes) | ✅ Validé, ⚠️ complété | Ajout : le Code node utilise `require('crypto')` → nécessite `NODE_FUNCTION_ALLOW_BUILTIN=crypto` (déjà dans compose). |
+| 4. Créer les credentials | ⚠️ **Corrigé** | **Manquait le credential `Podcast Webhook Auth` (Header Auth)** que le nœud Webhook exige. Les credentials **Discord** et **Gemini** ne sont **pas** utilisés par le workflow Phase 1 (le worker Python les détient). |
+| 5. Importer le workflow | ⚠️ **Corrigé** | `pipeline.json` ne contient QUE 4 nœuds (Webhook → Code → Postgres → Redis). Aucun nœud HTTP Discord/Gemini à lier. |
+| 6. Slash-command Discord | ❌ **Bloquant** | `workflows/discord-command.json` **n'existe pas** dans le dépôt. Commande corrigée ci-dessous (here-doc). |
+| 7. Webhook entrant (bot-first) | ✅ Validé | Le bot vérifie l'Ed25519 et relaie en `Authorization: Bearer <WORKER_SHARED_TOKEN>` (`bot/app/webhook_client.py:41`). |
+| 8. Test de bout en bout | ✅ Validé | `podcast.jobs.status='queued'` + `LLEN podcast:jobs ≥ 1` conformes au schéma et au workflow. |
+| 9–10. Dépannage / Maintenance | ✅ Validé | Inchangé. |
+
+> **Note port** : `docker-compose.yml` a une incohérence de *défaut* (`WEBHOOK_URL`/
+> `N8N_EDITOR_BASE_URL` retombent sur `5679` si `N8N_PORT` est absent, alors que
+> le mapping de port retombe sur `5678`). Tant que `.env` fixe `N8N_PORT=5678`
+> (cas de `env.template`), tout pointe sur `5678` et l'UI est sur
+> `http://localhost:5678/`. Si vous changez `N8N_PORT`, alignez les deux.
+
+---
+
 ## 1. Prérequis
 
 Vérifier que tous les services sont `healthy` :
@@ -83,11 +108,45 @@ docker compose restart n8n
 
 Puis re-tester. Supprimer le workflow de test une fois la vérification faite.
 
+> **Builtin Node.js requis** : le Code node `Validate + Generate job_id` appelle
+> `require('crypto').randomUUID()`. n8n 2.x bloque tous les builtins par défaut ;
+> `docker-compose.yml` autorise `crypto` via `NODE_FUNCTION_ALLOW_BUILTIN=crypto`.
+> Si le nœud échoue avec `Cannot find module 'crypto'`, vérifier cette variable
+> puis `docker compose restart n8n`.
+
 ---
 
 ## 4. Créer les credentials
 
-Naviguer vers **Settings → Credentials → New** pour chaque credential ci-dessous.
+Naviguer vers **Settings → Credentials → New**.
+
+Le workflow Phase 1 (`pipeline.json`) utilise **exactement trois** credentials :
+**Postgres**, **Redis**, et **Podcast Webhook Auth**. Les credentials **Discord
+Bot Token** et **Gemini API Key** ne sont **PAS** consommés par ce workflow — le
+worker Python (`worker/`) détient ces secrets et fait les appels Gemini + la
+livraison Discord. Ils sont documentés en §4bis uniquement pour référence future ;
+ne pas les créer pour faire tourner la Phase 1.
+
+### Podcast Webhook Auth (Header Auth) — REQUIS
+
+Le nœud **Webhook — POST /podcast** de `pipeline.json` est en
+`authentication: headerAuth` et référence un credential nommé
+`Podcast Webhook Auth`. C'est lui qui authentifie le bot auprès de n8n.
+
+Type : **Header Auth**. Nommer le credential `Podcast Webhook Auth`.
+
+| Champ        | Valeur                                  |
+|--------------|-----------------------------------------|
+| Header Name  | `Authorization`                         |
+| Header Value | `=Bearer {{ $env.WORKER_SHARED_TOKEN }}` |
+
+Cette valeur **doit** correspondre exactement à ce que le bot envoie :
+`bot/app/webhook_client.py` pose `Authorization: Bearer <WORKER_SHARED_TOKEN>`.
+Le préfixe `=` active l'expression n8n (le token réel n'est pas stocké en clair).
+`WORKER_SHARED_TOKEN` est déjà dans la whitelist `N8N_ENV_VARS` du compose.
+
+> Si ce credential manque ou que la valeur ne correspond pas, n8n renvoie
+> **403** au bot, et l'utilisateur Discord voit l'erreur générique française.
 
 ### Postgres
 
@@ -121,6 +180,15 @@ Type : **Redis**
 > depuis votre `.env`. Sans ce champ, la connexion sera rejetée.
 
 Cliquer **Test connection** avant de sauvegarder.
+
+---
+
+## 4bis. Credentials Discord / Gemini — NON requis en Phase 1 (référence)
+
+> Ces deux credentials ne sont **pas** consommés par `pipeline.json`. Le worker
+> Python détient `DISCORD_BOT_TOKEN` et `GEMINI_API_KEY` (`worker/app/config.py`)
+> et effectue lui-même les appels Gemini et la livraison Discord via `channel.send`.
+> Ne les créer que si une phase future ajoute des nœuds HTTP n8n correspondants.
 
 ### Discord Bot Token
 
@@ -169,16 +237,19 @@ Phase 1 livre `workflows/pipeline.json`. Importer via :
 
 **Workflows → Import from File** → sélectionner `workflows/pipeline.json`.
 
-Après l'import, n8n affiche les nœuds avec des avertissements
-"credential not configured". Cliquer sur chaque nœud concerné et lier le
-credential créé à l'étape 4 :
+Le workflow contient **exactement quatre nœuds**, en chaîne linéaire :
+**Webhook — POST /podcast** → **Validate + Generate job_id** (Code) →
+**INSERT jobs + audit_log** (Postgres) → **LPUSH podcast:jobs** (Redis).
 
-- Nœuds Postgres → credential **Postgres**
-- Nœuds Redis → credential **Redis**
-- Nœuds HTTP vers Discord → credential **Discord Bot Token**
-- Nœuds HTTP vers Gemini → credential **Gemini API Key**
+Après l'import, les nœuds portent des placeholders `REPLACE_AT_IMPORT_*`. Lier :
 
-Vérifier qu'il ne reste **aucun** avertissement jaune sur les nœuds.
+- Nœud **Webhook — POST /podcast** → credential **Podcast Webhook Auth** (Header Auth, §4)
+- Nœud **INSERT jobs + audit_log** → credential **Postgres**
+- Nœud **LPUSH podcast:jobs** → credential **Redis**
+
+Le Code node n'a pas de credential. **Aucun** nœud HTTP Discord/Gemini n'existe
+en Phase 1 (le worker s'en charge). Vérifier qu'il ne reste **aucun**
+avertissement jaune sur les nœuds.
 
 Activer le workflow avec le **toggle en haut à droite** (passe de `Inactive`
 à `Active`). L'activation génère les URLs webhook Production.
@@ -194,54 +265,38 @@ Opération unique. Nécessite `DISCORD_BOT_TOKEN`, `DISCORD_APP_ID` et
 source .env
 ```
 
-Phase 1 livre `workflows/discord-command.json`. Enregistrer la commande en
-scope guild (propagation immédiate, contrairement au scope global qui peut
-prendre jusqu'à une heure) :
+> ⚠️ **`workflows/discord-command.json` n'existe pas encore dans le dépôt.**
+> Le `curl` ci-dessous embarque donc le schéma en here-doc (aucun fichier requis).
+> Si vous préférez un fichier versionné : créez `workflows/discord-command.json`
+> avec le JSON ci-dessous, puis remplacez le bloc `-d @- <<'JSON' … JSON` par
+> `-d @workflows/discord-command.json`.
+
+Enregistrer la commande en scope guild (propagation immédiate, contrairement au
+scope global qui peut prendre jusqu'à une heure) :
 
 ```bash
 curl -X POST \
   -H "Authorization: Bot $DISCORD_BOT_TOKEN" \
   -H "Content-Type: application/json" \
   "https://discord.com/api/v10/applications/$DISCORD_APP_ID/guilds/$DISCORD_GUILD_ID/commands" \
-  -d @workflows/discord-command.json
-```
-
-Le fichier `discord-command.json` déclare le schéma `/podcast` :
-
-```json
+  -d @- <<'JSON'
 {
   "name": "podcast",
   "description": "Générer un podcast ou une vidéo NotebookLM",
   "options": [
-    {
-      "name": "subject",
-      "description": "Sujet (40–400 caractères)",
-      "type": 3,
-      "required": true,
-      "min_length": 40,
-      "max_length": 400
-    },
-    {
-      "name": "mode",
-      "description": "Type de sortie",
-      "type": 3,
-      "required": true,
-      "choices": [
-        {"name": "Podcast audio", "value": "podcast"},
-        {"name": "Vidéo", "value": "video"}
-      ]
-    },
-    {
-      "name": "style",
-      "description": "Style vidéo (requis si mode=video)",
-      "type": 3,
-      "required": false
-    }
+    {"name": "subject", "description": "Sujet (40–400 caractères)", "type": 3, "required": true, "min_length": 40, "max_length": 400},
+    {"name": "mode", "description": "Type de sortie", "type": 3, "required": true,
+     "choices": [{"name": "Podcast audio", "value": "podcast"}, {"name": "Vidéo", "value": "video"}]},
+    {"name": "style", "description": "Style vidéo (requis si mode=video)", "type": 3, "required": false}
   ]
 }
+JSON
 ```
 
-Voir `ARCHITECTURE.md §3.1` pour le schéma complet du payload Discord → n8n.
+Le schéma déclare trois options : `subject` (40–400 car., requis), `mode`
+(`podcast`|`video`, requis), `style` (optionnel) — embarqué dans le `curl`
+ci-dessus. Voir `ARCHITECTURE.md §3.1` pour le schéma complet du payload
+Discord → n8n.
 
 ---
 
