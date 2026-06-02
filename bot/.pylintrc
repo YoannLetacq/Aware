@@ -1,0 +1,20 @@
+[MASTER]
+fail-under=10.00
+
+[FORMAT]
+max-line-length=100
+
+[DESIGN]
+max-statements=60
+
+[MESSAGES CONTROL]
+# Framework false-positives — do not add inline disables; extend this file instead.
+# discord.py: Cog methods, command decorators resolved at runtime
+# pydantic: validators, model_fields not visible to pylint
+disable=
+    no-member,
+    too-few-public-methods,
+
+[SIMILARITIES]
+min-similarity-lines=6
+ignore-imports=yes
