@@ -1,0 +1,23 @@
+# Normalize all text to LF on commit
+* text=auto eol=lf
+
+# Workflow JSON — text so n8n exports diff cleanly
+*.json        text eol=lf
+workflows/*.json text eol=lf
+
+# SQL, shell, Docker
+*.sql         text eol=lf
+*.sh          text eol=lf
+Dockerfile    text eol=lf
+docker-compose*.yml text eol=lf
+
+# Binary lock — audio/video/archives
+*.mp3 binary
+*.mp4 binary
+*.wav binary
+*.bin binary
+*.zip binary
+*.tar.gz binary
+*.png binary
+*.jpg binary
+*.jpeg binary

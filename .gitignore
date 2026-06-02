@@ -1,0 +1,111 @@
+# ==========================================
+# GITIGNORE - n8n Podcast Pipeline
+# ==========================================
+
+# Secrets & credentials (refs/veille_auto/.gitignore:3-11)
+.env
+.env.*
+!.env.example
+!.env.template
+*.pem
+*.key
+*.crt
+.db_password
+.n8n_password
+.n8n_encryption_key
+
+# H4: storageState.json = bearer credential — ignore aggressively
+storageState.json
+*storage-state*.json
+playwright-storage-state.json
+
+# Persistent data volumes (refs/veille_auto/.gitignore:14-20)
+# Ignore ALL runtime content under data/ recursively, but keep the directory
+# skeleton via .gitkeep markers (n8n/redis/postgres write runtime state here).
+data/**
+!data/**/
+!data/**/.gitkeep
+backups/*.sql
+backups/*.tar.gz
+backups/*.bak
+artifacts/
+runs/
+
+# Logs (refs/veille_auto/.gitignore:19-20)
+**/logs
+logs/*.log
+!logs/.gitkeep
+
+# Docker (refs/veille_auto/.gitignore:23-24)
+.docker/
+docker-compose.override.yml
+
+# Playwright / browser automation — incl. M4 failure captures
+.playwright/
+playwright-report/
+test-results/
+screenshots/
+traces/
+*.har
+*.zip
+
+# Node (refs/veille_auto/.gitignore:43-45)
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnpm-debug.log
+
+# Python worker (refs/veille_auto/.gitignore:47-52)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+.venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Python packaging build artifacts (incl. root-owned Docker-built leftovers)
+*.egg-info*
+build/
+dist/
+
+# OS junk (refs/veille_auto/.gitignore:27-30)
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE — negation keeps .vscode/extensions.json (refs/veille_auto/.gitignore:31)
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Temporaries (refs/veille_auto/.gitignore:33-37)
+tmp/
+temp/
+*.tmp
+*.bak
+
+# OMC runtime state — refs/, plans/, research/ stay tracked
+# (refs/veille_auto/.gitignore:67 ignores all .omc/; deliberate divergence)
+# Stray nested .omc dirs (tools run with a subdir cwd) are always runtime junk.
+*/.omc/
+.omc/state/
+.omc/logs/
+.omc/notepad.md
+.omc/project-memory.json
+.omc/.project-memory.json.tmp*
+.omc/artifacts/
+.omc/reviews/
+.omc/sessions/
+
+# Misc — veille_auto historical artifacts not used in this repo
+# (QUICKSTART.md IS tracked here per IMPLEMENTATION_PLAN.md §1)
+DEPLOIEMENT.md
+REVIEW.md
+old.json
+!backups/.gitkeep
