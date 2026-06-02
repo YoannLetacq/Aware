@@ -1,0 +1,203 @@
+services:
+  # ==========================================
+  # POSTGRESQL - Base de données
+  # ==========================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: veille-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - veille-network
+
+  # ==========================================
+  # N8N - Automatisation
+  # ==========================================
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: veille-n8n
+    restart: unless-stopped
+    environment:
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
+      - DB_POSTGRESDB_USER=${POSTGRES_USER}
+      - DB_POSTGRESDB_PASSWORD=${POSTGRES_PASSWORD}
+      - N8N_BASIC_AUTH_ACTIVE=${N8N_BASIC_AUTH_ACTIVE}
+      - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - WEBHOOK_URL=http://n8n:5678/
+      - N8N_WEBHOOK_URL=http://n8n:5678/
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - DISCORD_WEBHOOK_TECH_NEWS=${DISCORD_WEBHOOK_TECH_NEWS}
+      - DISCORD_WEBHOOK_COMPANIES=${DISCORD_WEBHOOK_COMPANIES}
+      - DISCORD_WEBHOOK_REDDIT=${DISCORD_WEBHOOK_REDDIT}
+      - DISCORD_WEBHOOK_OTHERS=${DISCORD_WEBHOOK_OTHERS}
+      - DISCORD_BOT_TOKEN=${DISCORD_BOT_TOKEN}
+      - DISCORD_ALLOWED_AUTHORS=${DISCORD_ALLOWED_AUTHORS:-}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-pro}
+      - N8N_PAYLOAD_SIZE_MAX=16
+      - N8N_METRICS=true
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - N8N_EDITOR_BASE_URL=http://localhost:5678/
+      - N8N_RUNNERS_MODE=internal
+      - TZ=${TZ:-Europe/Paris}
+      - GENERIC_TIMEZONE=${TZ:-Europe/Paris}
+      # Code nodes need $env access (Authorize Mention, Sort Split & Limit).
+      # N8N_ENV_VARS whitelist below restricts which vars are exposed.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      - N8N_API_KEY=${N8N_API_KEY}
+      - N8N_RESTRICT_FILE_ACCESS_TO=/home/node/rss_sources.json
+      - N8N_ENV_VARS=DISCORD_WEBHOOK_URL,DISCORD_WEBHOOK_TECH_NEWS,DISCORD_WEBHOOK_COMPANIES,DISCORD_WEBHOOK_REDDIT,DISCORD_WEBHOOK_OTHERS,DISCORD_BOT_TOKEN,DISCORD_ALLOWED_AUTHORS,GEMINI_API_KEY,GEMINI_MODEL,POSTGRES_USER,POSTGRES_PASSWORD,POSTGRES_DB,WEBHOOK_URL,N8N_API_KEY
+    ports:
+      - "127.0.0.1:${N8N_PORT:-5678}:5678"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    volumes:
+      - ./data/n8n:/home/node/.n8n
+      - ./rss_sources.json:/home/node/rss_sources.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - veille-network
+
+  # ==========================================
+  # RSSHUB - Générateur feeds RSS custom
+  # ==========================================
+  rsshub:
+    image: diygod/rsshub:latest
+    container_name: veille-rsshub
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: ${RSSHUB_CACHE_TYPE:-memory}
+      CACHE_EXPIRE: ${RSSHUB_CACHE_EXPIRE:-300}
+      TZ: ${TZ:-Europe/Paris}
+    ports:
+      - "127.0.0.1:1200:1200"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - veille-network
+
+  # ==========================================
+  # REDIS - Cache & Lock Management
+  # ==========================================
+  redis:
+    image: redis:7-alpine
+    container_name: veille-redis
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+    volumes:
+      - ./data/redis:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - veille-network
+
+  # ==========================================
+  # WEBDIS - Redis REST API
+  # ==========================================
+  webdis:
+    image: nicolas/webdis:latest
+    container_name: veille-webdis
+    restart: unless-stopped
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - veille-network
+
+  # ==========================================
+  # PROMETHEUS - Monitoring (OPTIONNEL)
+  # ==========================================
+  # Décommenter pour activer le monitoring
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: veille-prometheus
+  #   restart: unless-stopped
+  #   command:
+  #     - '--config.file=/etc/prometheus/prometheus.yml'
+  #     - '--storage.tsdb.path=/prometheus'
+  #   volumes:
+  #     - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+  #     - ./data/prometheus:/prometheus
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - veille-network
+
+  # ==========================================
+  # GRAFANA - Dashboards (OPTIONNEL)
+  # ==========================================
+  # Décommenter pour activer les dashboards
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: veille-grafana
+  #   restart: unless-stopped
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+  #     - GF_INSTALL_PLUGINS=
+  #   volumes:
+  #     - ./data/grafana:/var/lib/grafana
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - prometheus
+  #   networks:
+  #     - veille-network
+
+networks:
+  veille-network:
+    driver: bridge

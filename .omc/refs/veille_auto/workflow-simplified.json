@@ -1,0 +1,826 @@
+{
+  "name": "VeilleIA-AI-simplified",
+  "nodes": [
+    {
+      "parameters": {
+        "guildIds": [
+          "1267071323864301589"
+        ],
+        "channelIds": [
+          "1448308430795313263",
+          "1448308549162631188",
+          "1448308621652922441",
+          "1450443575354724494"
+        ],
+        "pattern": "botMention",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-discord-trigger.discordTrigger",
+      "typeVersion": 1,
+      "position": [
+        -112,
+        800
+      ],
+      "id": "ac0f1afc-b408-4a9a-9e6f-036efda433a5",
+      "name": "Discord Bot mention1",
+      "credentials": {
+        "discordBotTriggerApi": {
+          "id": "0LtsnxnI50JdDSAA",
+          "name": "Discord Bot Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Drop mentions whose author is not in DISCORD_ALLOWED_AUTHORS (comma-separated user IDs).\n// If the env var is unset or empty, all mentions pass (backwards compatible).\nconst raw = $env.DISCORD_ALLOWED_AUTHORS || '';\nconst allowed = raw.split(',').map(s => s.trim()).filter(Boolean);\nif (allowed.length === 0) return $input.all();\nreturn $input.all().filter(item => allowed.includes(String(item.json.authorId || '')));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        24,
+        800
+      ],
+      "id": "5c1aa777-aaaa-4bbb-8ccc-aaaaaaaaaaaa",
+      "name": "Authorize Mention"
+    },
+    {
+      "parameters": {
+        "url": "=http://webdis:7379/SET/veille_lock/{{ $execution.id }}/NX/EX/900",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        160,
+        800
+      ],
+      "id": "2a278799-7faf-420a-96d1-ff6e835780c1",
+      "name": "Acquire Lock1",
+      "retryOnFail": true,
+      "maxTries": 5,
+      "waitBetweenTries": 2000
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d5159925-5c10-48b8-bd5d-088371096171",
+              "leftValue": "={{ $json.SET[1] }}",
+              "rightValue": "=OK",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        416,
+        800
+      ],
+      "id": "61b318c4-7787-454f-8e90-ae9ad11b5ccd",
+      "name": "Check lock Result1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $(\"Discord Bot mention1\").all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        1088
+      ],
+      "id": "6b65e20c-0dfa-4d48-91fa-ff44ffb85d83",
+      "name": "Get Message data3",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://discord.com/api/v10/channels/{{ $json.channelId }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bot {{ $env.DISCORD_BOT_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=  {\n    \"content\": \"⏳ <@{{ $json.authorId }}> Already running...\",\n    \"message_reference\": {\n      \"message_id\": \"{{ $json.id }}\"\n    }\n  }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        928,
+        1088
+      ],
+      "id": "e871b1e0-28fb-40ee-975a-43ee061168ee",
+      "name": "Send already running message1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1200,
+        1088
+      ],
+      "id": "f137a497-c9ce-4bd3-8e77-14b031bd7142",
+      "name": "WAIT 5s1",
+      "webhookId": "c8a4d6e6-cea2-45fd-b69d-830e7d09ed33"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://discord.com/api/v10/channels/{{ $json.channel_id }}/messages/{{ $json.id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bot {{ $env.DISCORD_BOT_TOKEN }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1456,
+        1088
+      ],
+      "id": "cd6a3101-e151-4f14-9047-aa6db3c088e0",
+      "name": "DELETE already running message1",
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "return $(\"Discord Bot mention1\").all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        672,
+        800
+      ],
+      "id": "220e05b4-db0d-4f98-b8d9-8e8fd0ab7705",
+      "name": "Get Message data2",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://discord.com/api/v10/channels/{{ $json.channelId }}/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bot {{ $env.DISCORD_BOT_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "=  {\n    \"content\": \"⏳ <@{{ $json.authorId }}> Processing your request...\",\n    \"message_reference\": {\n      \"message_id\": \"{{ $json.id }}\"\n    }\n  }",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        928,
+        800
+      ],
+      "id": "30d35dac-a8b8-4cb3-848b-2d3e3507c83d",
+      "name": "Send processing message1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Load RSS sources from mounted config file (./rss_sources.json -> /home/node/rss_sources.json)\n// Edit that file to add/remove/toggle feeds — no workflow change needed.\nconst buffer = await this.helpers.getBinaryDataBuffer(0, 'data');\nif (!buffer || buffer.length === 0) {\n  throw new Error('rss_sources.json is missing or empty at /home/node/rss_sources.json');\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(buffer.toString('utf8'));\n} catch (e) {\n  throw new Error('rss_sources.json is not valid JSON: ' + e.message);\n}\n\nif (!parsed || !Array.isArray(parsed.sources)) {\n  throw new Error('rss_sources.json must contain a top-level \"sources\" array');\n}\n\nconst sources = parsed.sources.filter(s => s && s.active && s.url);\nif (sources.length === 0) {\n  throw new Error('rss_sources.json has no active sources with a url');\n}\n\nconsole.log(`📡 Loaded ${sources.length} active RSS sources`);\nreturn sources.map(s => ({\n  json: { url: s.url, name: s.name, category: s.category, priority: s.priority }\n}));"
+      },
+      "id": "d3d3b335-1f55-4048-929d-cf4f9ae72a36",
+      "name": "Load RSS Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "options": {}
+      },
+      "id": "b6001612-54ac-4b5c-b6fc-e8005fca3cfd",
+      "name": "RSS Read",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [
+        1664,
+        800
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": " // Filter by date (last 2 days)                                                                                        \n  const cutoff = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);                                                         \n  const filtered = [];                                                                                                   \n   \n  for (const item of $input.all()) {                                                                                     \n    try {                                                                                                              \n      if (!item.json) continue;                                                                                          \n   \n      const url = item.json.link || item.json.url || '';                                                                 \n      const title = item.json.title || '';                                                                             \n                                                                                                                         \n      // Skip if no URL or title                                                                                       \n      if (!url || url.trim() === '' || !title || title.trim() === '') {\n        continue;                                                                                                        \n      }\n                                                                                                                         \n      // Parse publication date                                                                                          \n      let pubDate = null;\n      if (item.json.pubDate) {                                                                                           \n        pubDate = new Date(item.json.pubDate);                                                                         \n      } else if (item.json.isoDate) {                                                                                    \n        pubDate = new Date(item.json.isoDate);\n      }                                                                                                                  \n                                                                                                                       \n      // Skip items with no parseable date - prevents leaks via default-to-now\n      if (!pubDate || isNaN(pubDate.getTime())) {\n        continue;\n      }\n                                                                                                                       \n      // Only filter by date - AI will filter by relevance                                                               \n      const isRecent = pubDate >= cutoff;\n                                                                                                                         \n      if (isRecent) {                                                                                                  \n        let source = 'Unknown';                                                                                          \n        try {                                                                                                            \n          source = new URL(url).hostname.replace('www.', '');\n        } catch (e) {                                                                                                    \n          source = item.json.creator || item.json.author || 'Unknown';                                                 \n        }                                                                                                                \n  \n        filtered.push({                                                                                                  \n          json: {                                                                                                      \n            url: url.trim(),\n            title: title,                                                                                                \n            description: (item.json.description || item.json.contentSnippet || '').substring(0, 500),\n            content: (item.json.content || item.json['content:encoded'] || '').substring(0, 1000),                       \n            source: source,                                                                                            \n            published_at: pubDate.toISOString()                                                                          \n          }                                                                                                            \n        });                                                                                                              \n      }                                                                                                                \n    } catch (error) {\n      continue;\n    }\n  }\n\n  return filtered;"
+      },
+      "id": "8bef1465-1f90-4f5b-87e1-ddb92dbfbed7",
+      "name": "Filter Date & Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Categorize, add source_type, and prepare for insert\nconst categories = {\n  '🧠 LLM': ['llm', 'gpt', 'claude', 'mistral', 'gemini', 'chatgpt', 'language model', 'large language'],\n  '📚 RAG': ['rag', 'retrieval', 'embedding', 'vector', 'semantic search'],\n  '🎨 Vision': ['image', 'diffusion', 'dall-e', 'midjourney', 'stable diffusion', 'vision', 'computer vision', 'image generation'],\n  '🤖 Agents': ['agent', 'autonomous', 'agentic', 'workflow', 'swarm', 'multi-agent'],\n  '💻 Coding': ['code', 'copilot', 'coding', 'cursor', 'github copilot', 'devin', 'programming', 'developer'],\n  '🔬 Research': ['research', 'paper', 'arxiv', 'publication', 'study', 'breakthrough', 'academic']\n};\n\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  try {\n    // Skip if no url or title\n    if (!item.json.url || !item.json.title) {\n      continue;\n    }\n    \n    // Categorize by content\n    const text = (\n      (item.json.title || '') + ' ' + \n      (item.json.description || '') + ' ' + \n      (item.json.content || '')\n    ).toLowerCase();\n    \n    let category = '🤖 AI General';\n    for (const [cat, keywords] of Object.entries(categories)) {\n      if (keywords.some(kw => text.includes(kw))) {\n        category = cat;\n        break;\n      }\n    }\n    \n    // Determine source_type based on source domain and URL\n    const source = item.json.source || 'Unknown';\n    const url = (item.json.url || '').toLowerCase();\n    const sourceLower = source.toLowerCase();\n    let source_type = 'Other';\n    \n    // Reddit Communities - Explicit Reddit domain check\n    if (sourceLower.includes('reddit.com') || url.includes('reddit.com')) {\n      source_type = 'Reddit Communities';\n    }\n    // Company Blogs - Official company blogs and announcements\n    else if (\n      sourceLower.includes('openai.com') || url.includes('openai.com') ||\n      sourceLower.includes('anthropic.com') || url.includes('anthropic.com') ||\n      sourceLower.includes('huggingface.co') || url.includes('huggingface.co') ||\n      sourceLower.includes('blog.google') || url.includes('blog.google') ||\n      sourceLower.includes('deepmind.google') || url.includes('deepmind.google') ||\n      sourceLower.includes('ai.meta.com') || url.includes('ai.meta.com') ||\n      sourceLower.includes('stability.ai') || url.includes('stability.ai') ||\n      sourceLower.includes('cohere.com') || url.includes('cohere.com') ||\n      sourceLower.includes('mistral.ai') || url.includes('mistral.ai')\n    ) {\n      source_type = 'Company Blogs';\n    }\n    // Tech News - match only on source domain (not body keywords) to avoid false positives\n    else if (\n      /(?:techcrunch\\.com|hnrss\\.org|news\\.ycombinator\\.com|github\\.com|github\\.io)/.test(sourceLower + ' ' + url)\n    ) {\n      source_type = 'Tech News';\n    }\n    \n    // Add category, source_type and pass through (truncated to fit DB column widths)\n    output.push({\n      json: {\n        url: String(item.json.url).slice(0, 2048),\n        title: String(item.json.title).slice(0, 1000),\n        description: (item.json.description || '').slice(0, 2000),\n        content: (item.json.content || '').slice(0, 4000),\n        source: String(source).slice(0, 200),\n        source_type: String(source_type).slice(0, 80),\n        category: String(category).slice(0, 80),\n        published_at: item.json.published_at || new Date().toISOString()\n      }\n    });\n  } catch (error) {\n    // Skip problematic items\n    continue;\n  }\n}\n\nreturn output;"
+      },
+      "id": "faeb99c2-de9b-423d-ad7f-56373593aeb5",
+      "name": "Categorize & Validate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2176,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst urls = items.map(item => item.json.url).filter(url => url && url.trim() !== '');\n\nif (urls.length === 0) {\n  return [];\n}\n\nreturn [{\n  json: {\n    urls: urls,\n    items: items.map(i => i.json)\n  }\n}];"
+      },
+      "id": "334731e5-afe8-4dcd-b772-17185ccee881",
+      "name": "Collect URLs for DB check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2448,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT url FROM rss_articles WHERE url IN ({{ $json.urls.map(url => \"'\" + url.replace(/'/g, \"''\") + \"'\").join(', ') }})",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2704,
+        800
+      ],
+      "id": "b8f1d040-591a-4f5a-9b45-879a77fb4e09",
+      "name": "Check existing articles1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "DO0poBoS0C0ayj8K",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const originalItems = $('Collect URLs for DB check').first().json.items;\nconst dbResult = $input.all();\nconst existingURls = new Set(dbResult.map(res => res.json.url).filter(Boolean));\n\nconst newArticles = originalItems.filter(item => !existingURls.has(item.url));\n\nconsole.log(`total : ${originalItems.length}`);\nconsole.log(`Already in db : ${existingURls.size}`);\nconsole.log(`new : ${newArticles.length}`);\n\nif (newArticles.length === 0) {\n  return [];\n} else {\n  return newArticles.map(item => ({json: item}));\n}\n"
+      },
+      "id": "5ad12b05-b6cc-4d11-b39e-4b0e922db93e",
+      "name": "Filter new articles only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare SQL-safe values by escaping single quotes\nconst items = $input.all();\nconst output = [];\n\nfor (const item of items) {\n  try {\n    // Function to escape single quotes for SQL\n    const sqlEscape = (str) => {\n      if (!str) return '';\n      return String(str).replace(/'/g, \"''\");\n    };\n    \n    output.push({\n      json: {\n        url: sqlEscape(item.json.url),\n        title: sqlEscape(item.json.title),\n        description: sqlEscape(item.json.description),\n        content: sqlEscape(item.json.content),\n        source: sqlEscape(item.json.source),\n        source_type: sqlEscape(item.json.source_type),\n        category: item.json.category,\n        published_at: item.json.published_at\n      }\n    });\n  } catch (error) {\n    continue;\n  }\n}\n\nreturn output;"
+      },
+      "id": "2bb547ec-ddef-45d5-95fc-a10c6420b197",
+      "name": "Escape SQL Values",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3216,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO rss_articles (url, title, description, content, source, source_type, category, published_at, sent_at)\nVALUES (\n  '{{ $json.url }}',\n  '{{ $json.title }}',\n  '{{ $json.description }}',\n  '{{ $json.content }}',\n  '{{ $json.source }}',\n  '{{ $json.source_type }}',\n  '{{ $json.category }}',\n  {{ $json.published_at ? \"'\" + $json.published_at + \"'\" : \"NULL\" }},\n  NULL\n)\nON CONFLICT (url) DO NOTHING;",
+        "options": {
+          "queryReplacement": "="
+        }
+      },
+      "id": "83d37c48-0045-47d5-9ca3-83c44d2c0c55",
+      "name": "Insert into Database1",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3488,
+        944
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "DO0poBoS0C0ayj8K",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $env.GEMINI_MODEL }}:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n  JSON.stringify({\n    contents: [{\n      parts: [{\n        text: `You are an AI content analyst for technical AI/ML monitoring.\n\nAnalyze this article:\n\nTitle: ${$json.title}\nDescription: ${$json.description}\nSource: ${$json.source}\nURL: ${$json.url}\n\n1. CONFIDENCE (0-100): How relevant to AI/ML?\n   - 85-100: Clearly about AI/ML\n   - 50-84: Partially related\n   - 0-49: Not AI-related\n\n2. SCORE (0-100): Importance for AI practitioners.\n   Breaking News (30) + Technical Depth (25) + Novelty (25) + Impact (20).\n\n3. If confidence >= 85, also produce:\n   - summary: 2-3 sentence Discord summary\n   - takeaway: 1-sentence key takeaway\n   - tag: one of 🔥 (Hot) / 📊 (Technical) / 🔬 (Research) / 💡 (Insight)\n   If confidence < 85, return summary/takeaway as empty strings and tag as \"\".\n\nRespond ONLY with JSON:\n{\n  \"confidence\": 0-100,\n  \"score\": 0-100,\n  \"reason\": \"brief\",\n  \"summary\": \"...\",\n  \"takeaway\": \"...\",\n  \"tag\": \"...\"\n}`\n      }]\n    }]\n  })\n}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        3488,
+        800
+      ],
+      "id": "4e7a5abb-6faf-4581-906a-724a481b5e94",
+      "name": "Gemini AI Filter"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ===================================\n// PARSE GEMINI AVEC MAX_TOKENS PRÉCOCE\n// ===================================\n\nconst items = $input.all();\nconst articles = $('Escape SQL Values').all();\n\nconsole.log(`📥 Traitement de ${items.length} articles`);\n\nconst output = [];\nlet maxTokensCount = 0;\nlet tooShortCount = 0;\nlet successCount = 0;\n\nfor (let i = 0; i < items.length; i++) {\n  const article = articles[i]?.json || {};\n  \n  let score = 0;\n  let confidence = 0;\n  let reason = 'Parsing error';\n  let aiTag = '';\n  let aiSummary = '';\n  let aiTakeaway = '';\n\n  try {\n    const candidate = items[i].json.candidates[0];\n    const finishReason = candidate.finishReason;\n    const text = candidate.content.parts[0].text;\n    \n    // Vérifier si MAX_TOKENS\n    if (finishReason === 'MAX_TOKENS') {\n      maxTokensCount++;\n      \n      // Si le texte est trop court (< 20 chars), impossible de parser\n      if (text.length < 20) {\n        tooShortCount++;\n        console.log(`⚠️  Article ${i}: MAX_TOKENS avec texte trop court (${text.length} chars) - SKIP`);\n        reason = 'MAX_TOKENS - Response too short to parse';\n        // On laisse confidence=0 pour filtrer cet article\n        \n      } else {\n        // Tenter de parser quand même\n        const clean = text.replace(/```json\\s*/gi, '').replace(/```\\s*/g, '').trim();\n        \n        try {\n          const parsed = JSON.parse(clean);\n          score = parsed.score || 0;\n          confidence = parsed.confidence || 50; // Confiance moyenne\n          reason = 'Parsed despite MAX_TOKENS';\n          successCount++;\n        } catch {\n          // Échec de parsing mais on garde une trace\n          reason = 'MAX_TOKENS - Could not parse incomplete JSON';\n          confidence = 0; // Sera filtré\n        }\n      }\n      \n    } else {\n      // Cas normal : STOP\n      const clean = text.replace(/```json\\s*/gi, '').replace(/```\\s*/g, '').trim();\n      const parsed = JSON.parse(clean);\n      \n      score = parsed.score || 0;\n      confidence = parsed.confidence || 0;\n      reason = parsed.reason || 'OK';\n      aiTag = parsed.tag || parsed.ai_tag || '';\n      aiSummary = parsed.summary || parsed.ai_summary || '';\n      aiTakeaway = parsed.takeaway || parsed.ai_takeaway || '';\n      \n      // Valider\n      score = Math.max(0, Math.min(100, Number(score) || 0));\n      confidence = Math.max(0, Math.min(100, Number(confidence) || 0));\n      \n      successCount++;\n    }\n    \n  } catch (error) {\n    console.log(`❌ Article ${i}: ${error.message}`);\n  }\n  \n  output.push({\n    json: {\n      ...article,\n      gemini_score: score,\n      gemini_confidence: confidence,\n      gemini_reason: reason,\n      ai_tag: aiTag,\n      ai_summary: aiSummary,\n      ai_takeaway: aiTakeaway\n    }\n  });\n}\n\n// Filtrage\nconst filtered = output.filter(item => item.json.gemini_confidence >= 85);\n\nconsole.log(`\n┌─────────────────────────────────────────────┐\n│         📊 PARSING STATISTICS               │\n├─────────────────────────────────────────────┤\n│ Total articles:              ${output.length.toString().padStart(3)}         │\n│ ⚠️  MAX_TOKENS:               ${maxTokensCount.toString().padStart(3)}         │\n│ 🚫 Too short (< 20 chars):   ${tooShortCount.toString().padStart(3)}         │\n│ ✅ Successfully parsed:       ${successCount.toString().padStart(3)}         │\n│ 🎯 Pass filter (≥ 85):        ${filtered.length.toString().padStart(3)}         │\n├─────────────────────────────────────────────┤\n│ ⚠️  WARNING: ${maxTokensCount} articles hit MAX_TOKENS │\n│    Gemini stopped generating immediately!   │\n└─────────────────────────────────────────────┘\n`);\n\nreturn filtered;"
+      },
+      "id": "7ea240dc-ca0f-4c96-96c4-0f392016ea04",
+      "name": "Parse AI Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3744,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Split by source_type, sort by score desc, keep top-N per group, tag each item with webhook metadata.\nconst items = $input.all().map(i => i.json);\n\nconst groups = {\n  'Tech News':          { webhook: $env.DISCORD_WEBHOOK_TECH_NEWS, color: 15844367, label: '📰 Tech News IA',          defaultTag: '',   limit: 10 },\n  'Company Blogs':      { webhook: $env.DISCORD_WEBHOOK_COMPANIES, color: 10181046, label: '💬 Companies Blog IA',     defaultTag: '',   limit: 10 },\n  'Reddit Communities': { webhook: $env.DISCORD_WEBHOOK_REDDIT,    color: 10181046, label: '💬 Reddit Communities IA', defaultTag: '',   limit: 10 },\n  'Other':              { webhook: $env.DISCORD_WEBHOOK_OTHERS,    color: 7506394,  label: '🔗 Other Sources IA',       defaultTag: '💡', limit: 10 }\n};\n\nconst byGroup = {};\nfor (const it of items) {\n  const key = groups[it.source_type] ? it.source_type : 'Other';\n  (byGroup[key] ||= []).push(it);\n}\n\nconst out = [];\nfor (const [key, list] of Object.entries(byGroup)) {\n  list.sort((a, b) => (b.gemini_score || 0) - (a.gemini_score || 0));\n  const meta = groups[key];\n  list.slice(0, meta.limit).forEach(a => {\n    out.push({ json: { ...a, _group: key, _webhook: meta.webhook, _color: meta.color, _label: meta.label, _default_tag: meta.defaultTag } });\n  });\n}\nreturn out;\n"
+      },
+      "id": "b4e2d57f-96fa-407a-b477-07f21e0a4547",
+      "name": "Sort Split & Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4000,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://generativelanguage.googleapis.com/v1beta/models/{{ $env.GEMINI_MODEL }}:generateContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $env.GEMINI_API_KEY }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{\n     JSON.stringify({\n       contents: [{\n         parts: [{\n           text: `Create concise Discord summary.\n\nTitle: ${$json.title}\nDescription: ${$json.description}\nURL: ${$json.url}\n\nGenerate:\n1. Summary (2-3 sentences)\n2. Key Takeaway (1 sentence)\n3. Tag: 🔥 (Hot) / 📊 (Technical) / 🔬 (Research) / 💡 (Insight)\n\nRespond ONLY with JSON:\n{\n  \"summary\": \"...\",\n  \"takeaway\": \"...\",\n  \"tag\": \"...\"\n}`\n         }]\n       }]\n     })\n   }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        4256,
+        800
+      ],
+      "id": "9461e6ca-0daf-451b-a92f-9abc5dd3541a",
+      "name": "Gemini Summarize"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Build one Discord payload per group. Articles already enriched (ai_summary/ai_takeaway/ai_tag) by the merged Gemini call upstream.\nconst articles = $input.all().map(a => a.json);\n\nfunction truncateDescription(description, maxLength) {\n  if (description.length <= maxLength) return description;\n  const cutPoint = description.lastIndexOf('.', maxLength - 3);\n  if (cutPoint > maxLength * 0.7) return description.substring(0, cutPoint + 1);\n  return description.substring(0, maxLength - 3) + '...';\n}\nfunction getEmbedSize(e) {\n  return (e.title?.length || 0) + (e.description?.length || 0) + (e.footer?.text?.length || 0);\n}\n\n// Default tag fallback if Gemini didn't supply one\nconst enriched = articles.map(a => ({\n  ...a,\n  ai_tag: a.ai_tag || a._default_tag || '💡'\n}));\n\nconst byGroup = {};\nfor (const a of enriched) (byGroup[a._group] ||= []).push(a);\n\nconst now = new Date();\nconst dateStr = now.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });\n\nconst out = [];\nfor (const [groupName, list] of Object.entries(byGroup)) {\n  if (!list.length) continue;\n  const { _webhook, _color, _label } = list[0];\n\n  const embeds = [];\n  let currentSize = 0;\n  const MAX_TOTAL_SIZE = 5800;\n\n  for (const data of list) {\n    const pubDate = new Date(data.published_at);\n    const pubDateStr = pubDate.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });\n\n    let description = '';\n    if (data.ai_summary)  description += `📝 **AI Summary:** ${data.ai_summary}\\n\\n`;\n    if (data.ai_takeaway) description += `💡 **Key Takeaway:** ${data.ai_takeaway}\\n\\n`;\n    if (data.gemini_score) description += `**Score: ${data.gemini_score}/100** ${data.gemini_reason ? '- ' + data.gemini_reason : ''}\\n\\n`;\n    if (!data.ai_summary && data.description) {\n      const desc = data.description || 'Pas de description disponible';\n      description += desc.substring(0, 200) + (desc.length > 200 ? '...' : '');\n    }\n\n    const embed = {\n      title: `${data.ai_tag || ''} ${data.category} | ${data.title}`.substring(0, 256),\n      description,\n      url: data.url,\n      color: _color,\n      footer: { text: `📍 ${data.source} | ⏰ ${pubDateStr}` }\n    };\n\n    let embedSize = getEmbedSize(embed);\n    if (currentSize + embedSize > MAX_TOTAL_SIZE) {\n      const remaining = MAX_TOTAL_SIZE - currentSize - 200;\n      if (remaining > 100) {\n        embed.description = truncateDescription(description, remaining);\n        embeds.push(embed); currentSize += getEmbedSize(embed);\n      }\n      break;\n    }\n    if (embed.description.length > 1000) embed.description = truncateDescription(embed.description, 1000);\n    embeds.push(embed); currentSize += embedSize;\n  }\n\n  if (!embeds.length) continue;\n\n  out.push({\n    json: {\n      webhook_url: _webhook,\n      content: `${_label} (AI-Curated) - ${embeds.length}/${list.length} article(s)\\n\\n📅 ${dateStr}\\n━━━━━━━━━━━━━━━━━━━━━━━`,\n      embeds\n    }\n  });\n}\nreturn out;\n"
+      },
+      "id": "bf462fb5-daae-45e5-a927-50c9a789d59b",
+      "name": "Parse & Format Embeds",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4528,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.webhook_url }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ content: $json.content, embeds: $json.embeds }) }}",
+        "options": {}
+      },
+      "id": "add9298b-0863-4752-8fd5-06ea86e0e58a",
+      "name": "Send to Discord",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4784,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=http://webdis:7379/EVAL/{{ encodeURIComponent(\"if redis.call('GET',KEYS[1])==ARGV[1] then return redis.call('DEL',KEYS[1]) else return 0 end\") }}/1/veille_lock/{{ $execution.id }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        5296,
+        800
+      ],
+      "id": "5a6a0e87-a895-4500-867b-d28ec565b4d4",
+      "name": "Release lock",
+      "executeOnce": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE rss_articles SET sent_at = NOW() WHERE url IN ({{ ($('Parse & Format Embeds').all().flatMap(g => (g.json.embeds || []).map(e => \"'\" + String(e.url || '').replace(/'/g, \"''\") + \"'\")).join(',')) || \"''\" }});",
+        "options": {}
+      },
+      "id": "9f4e5e10-1111-4222-9333-444444444444",
+      "name": "Mark Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        5040,
+        800
+      ],
+      "executeOnce": true,
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "postgres": {
+          "id": "DO0poBoS0C0ayj8K",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/node/rss_sources.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1.1,
+      "position": [
+        1184,
+        800
+      ],
+      "id": "bf630e1b-af32-44c2-811a-1fac007636e0",
+      "name": "Read/Write Files from Disk"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Discord Bot mention1": {
+      "main": [
+        [
+          {
+            "node": "Authorize Mention",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Authorize Mention": {
+      "main": [
+        [
+          {
+            "node": "Acquire Lock1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Acquire Lock1": {
+      "main": [
+        [
+          {
+            "node": "Check lock Result1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check lock Result1": {
+      "main": [
+        [
+          {
+            "node": "Get Message data2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Message data3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message data3": {
+      "main": [
+        [
+          {
+            "node": "Send already running message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send already running message1": {
+      "main": [
+        [
+          {
+            "node": "WAIT 5s1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WAIT 5s1": {
+      "main": [
+        [
+          {
+            "node": "DELETE already running message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Message data2": {
+      "main": [
+        [
+          {
+            "node": "Send processing message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send processing message1": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load RSS Sources": {
+      "main": [
+        [
+          {
+            "node": "RSS Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RSS Read": {
+      "main": [
+        [
+          {
+            "node": "Filter Date & Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter Date & Normalize": {
+      "main": [
+        [
+          {
+            "node": "Categorize & Validate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Categorize & Validate": {
+      "main": [
+        [
+          {
+            "node": "Collect URLs for DB check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect URLs for DB check": {
+      "main": [
+        [
+          {
+            "node": "Check existing articles1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check existing articles1": {
+      "main": [
+        [
+          {
+            "node": "Filter new articles only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter new articles only": {
+      "main": [
+        [
+          {
+            "node": "Escape SQL Values",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escape SQL Values": {
+      "main": [
+        [
+          {
+            "node": "Gemini AI Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini AI Filter": {
+      "main": [
+        [
+          {
+            "node": "Parse AI Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse AI Filter": {
+      "main": [
+        [
+          {
+            "node": "Sort Split & Limit",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Insert into Database1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort Split & Limit": {
+      "main": [
+        [
+          {
+            "node": "Parse & Format Embeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse & Format Embeds": {
+      "main": [
+        [
+          {
+            "node": "Send to Discord",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send to Discord": {
+      "main": [
+        [
+          {
+            "node": "Mark Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Sent": {
+      "main": [
+        [
+          {
+            "node": "Release lock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Load RSS Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "44e3160e-1d8a-42f8-9bbc-b49593620aeb",
+  "meta": {
+    "instanceId": "b2db283429714e1b722945f23aa6e7deb6985ebe6f21e76c3572815f88c6f863"
+  },
+  "id": "qlCYoSBZgLYfLtYK",
+  "tags": []
+}

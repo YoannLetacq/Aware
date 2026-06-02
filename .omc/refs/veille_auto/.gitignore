@@ -1,0 +1,66 @@
+# ==========================================
+# GITIGNORE - Système de Veille IA
+# ==========================================
+
+# Données sensibles
+.env
+*.pem
+*.key
+*.crt
+.db_password
+.n8n_password
+.n8n_encryption_key
+
+# Données persistantes
+data/
+backups/*.sql
+backups/*.tar.gz
+backups/*.bak
+**/logs
+logs/*.log
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Système
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temporaires
+tmp/
+temp/
+*.tmp
+*.bak
+
+# Node modules (si extensions)
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Python (si scripts Python)
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+venv/
+env/
+
+# Garder les structures vides
+!data/.gitkeep
+!backups/.gitkeep
+!logs/.gitkeep
+
+# dev notes (local only)
+DEPLOIEMENT.md
+QUICKSTART.md
+REVIEW.md
+old.json
+
+# OMC state
+.omc/
